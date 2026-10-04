@@ -37,9 +37,10 @@ class _BenchPageState extends State<BenchPage> {
   }
 
   Future<void> _open() async {
-    final ok = await Permission.camera.request();
-    _mic = (await Permission.microphone.request()).isGranted;
-    if (!ok.isGranted) {
+    // iOS: the plugin asks for camera + microphone itself.
+    final camOk = Platform.isIOS || (await Permission.camera.request()).isGranted;
+    _mic = Platform.isIOS || (await Permission.microphone.request()).isGranted;
+    if (!camOk) {
       setState(() => _status = 'Camera permission denied');
       return;
     }
@@ -58,7 +59,7 @@ class _BenchPageState extends State<BenchPage> {
     final r = _rec;
     if (r == null) return;
     if (!_recording) {
-      final dir = await getExternalStorageDirectory();
+      final dir = Platform.isIOS ? await getApplicationDocumentsDirectory() : await getExternalStorageDirectory();
       _count++;
       final path = '${dir!.path}/clip_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final pressedUs = DateTime.now().microsecondsSinceEpoch;

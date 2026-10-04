@@ -10,4 +10,6 @@
   via AudioRecord.getTimestamp; `start(withAudio: true)`, falls back to video
   only if the microphone can't be used (`RecordingResult.hasAudio`).
   Clap test: sound lands where the hands stop, within one video frame.
-* iOS: not implemented yet.
+* iOS: AVCaptureSession + AVAssetWriter, video + sound on the capture
+  session clock; asks for camera/microphone itself. Compile-checked in CI,
+  not yet tested on a device.
