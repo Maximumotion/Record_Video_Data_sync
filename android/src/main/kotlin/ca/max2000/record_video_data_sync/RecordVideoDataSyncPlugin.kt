@@ -75,6 +75,10 @@ class RecordVideoDataSyncPlugin : FlutterPlugin, MethodCallHandler {
             "setZoom" -> { rec().setZoom(call.argument<Double>("ratio") ?: 1.0); result.success(null) }
             "zoomRange" -> result.success(rec().zoomRange())
             "close" -> { recorder?.close(); recorder = null; result.success(null) }
+            "displayRotation" -> {
+                val dm = binding.applicationContext.getSystemService(android.content.Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+                result.success(dm.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation ?: 0)
+            }
             else -> result.notImplemented()
         }
     }

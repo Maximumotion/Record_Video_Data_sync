@@ -90,4 +90,19 @@ class PreciseRecorder {
       ((await _ch.invokeListMethod<double>('zoomRange')) ?? const [1.0, 1.0]);
 
   Future<void> close() => _ch.invokeMethod('close');
+
+  /// How the screen is turned right now: 0 portrait, 1 = 90 (landscape,
+  /// top to the left), 2 = 180, 3 = 270. Android only (0 elsewhere).
+  static Future<int> displayRotation() async {
+    try {
+      return (await _ch.invokeMethod<int>('displayRotation')) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Quarter turns that show the camera image upright on a screen turned
+  /// by [displayRotation] (use with RotatedBox around [preview]).
+  int previewQuarterTurns(int displayRotation) =>
+      ((sensorOrientation - displayRotation * 90 + 360) % 360) ~/ 90;
 }
