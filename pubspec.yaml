@@ -1,16 +1,16 @@
 name: record_video_data_sync
-description: "A new Flutter plugin project."
-version: 0.0.1
+description: "Video recorder for Flutter (Android Camera2 + MediaCodec) that reports the exact capture time of the first frame, so video lines up with sensor data to a few milliseconds."
+version: 0.0.1-dev.1
 homepage:
+repository: https://github.com/Maximumotion/Record_Video_Data_sync
 
 environment:
-  sdk: ^3.11.5
+  sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.3.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  plugin_platform_interface: ^2.0.2
 
 dev_dependencies:
   flutter_test:

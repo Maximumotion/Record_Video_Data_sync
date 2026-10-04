@@ -1,15 +1,31 @@
 # record_video_data_sync
 
-A new Flutter plugin project.
+A Flutter video recorder that knows **exactly when its first frame was
+captured**, so a video can be lined up with sensor data (accelerometer, GPS,
+timers) to a few milliseconds.
 
-## Getting Started
+Ordinary camera plugins report "recording started" when their call returns --
+on a Galaxy S24 that is 140-470 ms after the camera really began filming, and
+it varies from one recording to the next. This plugin keeps the camera
+sensor's capture timestamp on every frame, all the way into the MP4, and
+converts it to the phone's wall clock.
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/to/develop-plugins),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+Built for MAX2000 rowing analytics (video + boat acceleration).
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Usage
 
+```dart
+final rec = await PreciseRecorder.open(width: 1280, height: 720, fps: 30);
+// show rec.preview() in your widget tree
+await rec.start('/path/clip.mp4', rotationDegrees: 90);
+// ...
+final result = await rec.stop();
+// result.firstFrameEpochUs: phone time (us since epoch) of video time 0
+```
+
+Ask for the CAMERA permission before `open`.
+
+## Status
+
+* Android: video (no sound yet).
+* iOS: planned.
