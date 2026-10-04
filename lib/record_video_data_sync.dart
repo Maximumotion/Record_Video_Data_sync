@@ -104,5 +104,11 @@ class PreciseRecorder {
   /// Quarter turns that show the camera image upright on a screen turned
   /// by [displayRotation] (use with RotatedBox around [preview]).
   int previewQuarterTurns(int displayRotation) =>
-      ((sensorOrientation - displayRotation * 90 + 360) % 360) ~/ 90;
+      previewQuarterTurnsFor(sensorOrientation, displayRotation);
 }
+
+/// Quarter turns that show a camera with [sensorOrientation] upright on a
+/// screen turned by [displayRotation] (0..3). See
+/// [PreciseRecorder.previewQuarterTurns].
+int previewQuarterTurnsFor(int sensorOrientation, int displayRotation) =>
+    ((sensorOrientation - displayRotation * 90) % 360 + 360) % 360 ~/ 90;
