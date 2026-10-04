@@ -27,5 +27,5 @@ Ask for the CAMERA permission before `open`.
 
 ## Status
 
-* Android: video (no sound yet).
+* Android: video + sound.
 * iOS: planned.

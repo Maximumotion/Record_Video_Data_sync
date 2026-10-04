@@ -60,6 +60,7 @@ class PreciseRecorder(
         val width: Int,
         val height: Int,
         val fps: Int,
+        val hasAudio: Boolean,
     )
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -92,6 +93,15 @@ class PreciseRecorder(
     private var frameCount = 0
     private var recording = false
     private var drainThread: Thread? = null
+
+    // Audio (P1b): AAC track on the same MONOTONIC clock as the video.
+    private var audio: AudioTrackRecorder? = null
+    private var audioTrack = -1
+    private var audioWanted = false
+    private var audioFormatPending: MediaFormat? = null
+    private var videoFormatPending: MediaFormat? = null
+    private var audioWritten = 0
+    private val muxLock = Any()
 
     val textureId: Long get() = producer?.id() ?: -1
 
@@ -230,7 +240,7 @@ class PreciseRecorder(
     }
 
     /** [rotationDegrees]: how the phone is held (0/90/180/270, Surface.ROTATION_* x 90). */
-    fun start(path: String, rotationDegrees: Int, onError: (String) -> Unit) {
+    fun start(path: String, rotationDegrees: Int, withAudio: Boolean, onError: (String) -> Unit) {
         if (recording) return
         try {
             outputPath = path
@@ -243,10 +253,23 @@ class PreciseRecorder(
                 it.setOrientationHint((sensorOrientation - rotationDegrees + 360) % 360)
             }
             trackIndex = -1
+            audioTrack = -1
+            audioFormatPending = null
+            videoFormatPending = null
+            audioWritten = 0
             muxerStarted = false
             firstPtsUs = -1L
             lastPtsUs = -1L
             frameCount = 0
+            audioWanted = false
+            if (withAudio) {
+                val a = AudioTrackRecorder(
+                    onFormat = { f -> synchronized(muxLock) { audioFormatPending = f; tryStartMuxer() } },
+                    sink = { buf, info -> writeAudio(buf, info) },
+                )
+                audioWanted = a.start()
+                audio = if (audioWanted) a else null
+            }
             recording = true
             startWallUs = System.currentTimeMillis() * 1000L
             drainThread = Thread { drainLoop() }.also { it.start() }
@@ -263,19 +286,23 @@ class PreciseRecorder(
         while (true) {
             val idx = try { c.dequeueOutputBuffer(info, 10_000) } catch (_: Exception) { break }
             when {
-                idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    trackIndex = muxer!!.addTrack(c.outputFormat)
-                    muxer!!.start()
-                    muxerStarted = true
+                idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> synchronized(muxLock) {
+                    videoFormatPending = c.outputFormat
+                    tryStartMuxer()
                 }
                 idx >= 0 -> {
                     val buf = c.getOutputBuffer(idx)
                     val config = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                    if (!config && info.size > 0 && muxerStarted && buf != null) {
-                        if (firstPtsUs < 0) firstPtsUs = info.presentationTimeUs
-                        lastPtsUs = info.presentationTimeUs
-                        frameCount++
-                        muxer!!.writeSampleData(trackIndex, buf, info)
+                    if (!config && info.size > 0 && buf != null) synchronized(muxLock) {
+                        // Until both tracks are known the muxer can't start;
+                        // frames before that are not written (the first one
+                        // written is the one whose time is reported).
+                        if (muxerStarted) {
+                            if (firstPtsUs < 0) firstPtsUs = info.presentationTimeUs
+                            lastPtsUs = info.presentationTimeUs
+                            frameCount++
+                            muxer!!.writeSampleData(trackIndex, buf, info)
+                        }
                     }
                     c.releaseOutputBuffer(idx, false)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
@@ -287,6 +314,30 @@ class PreciseRecorder(
         }
     }
 
+    /** Starts the muxer once the video (and, if wanted, audio) format is known. Holds muxLock. */
+    private fun tryStartMuxer() {
+        if (muxerStarted) return
+        val vf = videoFormatPending ?: return
+        if (audioWanted && audioFormatPending == null) return
+        val m = muxer ?: return
+        trackIndex = m.addTrack(vf)
+        audioFormatPending?.let { audioTrack = m.addTrack(it) }
+        m.start()
+        muxerStarted = true
+    }
+
+    /** Audio samples from the first video frame on (same clock), never before. */
+    private fun writeAudio(buf: java.nio.ByteBuffer, info: MediaCodec.BufferInfo) {
+        synchronized(muxLock) {
+            if (!muxerStarted || audioTrack < 0 || firstPtsUs < 0) return
+            if (info.presentationTimeUs < firstPtsUs) return
+            try {
+                muxer!!.writeSampleData(audioTrack, buf, info)
+                audioWritten++
+            } catch (_: Exception) {}
+        }
+    }
+
     fun stop(onDone: (Result?) -> Unit) {
         if (!recording) return onDone(null)
         try {
@@ -295,13 +346,19 @@ class PreciseRecorder(
         recording = false
         try { codec?.signalEndOfInputStream() } catch (_: Exception) {}
         Thread {
+            try { audio?.stop() } catch (_: Exception) {}
+            audio = null
             try { drainThread?.join(3000) } catch (_: Exception) {}
             try { codec?.stop() } catch (_: Exception) {}
             try { codec?.release() } catch (_: Exception) {}
             codec = null
-            try { if (muxerStarted) muxer?.stop() } catch (_: Exception) {}
-            try { muxer?.release() } catch (_: Exception) {}
-            muxer = null
+            synchronized(muxLock) {
+                try { if (muxerStarted) muxer?.stop() } catch (_: Exception) {}
+                try { muxer?.release() } catch (_: Exception) {}
+                muxer = null
+                muxerStarted = false
+                videoFormatPending = null
+            }
             if (firstPtsUs < 0) { onDone(null); return@Thread }
             val useRealtime = pickRealtime(firstPtsUs)
             onDone(Result(
@@ -313,6 +370,7 @@ class PreciseRecorder(
                 width = videoSize.width,
                 height = videoSize.height,
                 fps = fps,
+                hasAudio = audioWritten > 0,
             ))
         }.start()
     }
@@ -349,6 +407,8 @@ class PreciseRecorder(
     }
 
     fun close() {
+        try { audio?.stop() } catch (_: Exception) {}
+        audio = null
         try { if (recording) { recording = false; codec?.signalEndOfInputStream() } } catch (_: Exception) {}
         try { session?.close() } catch (_: Exception) {}
         session = null

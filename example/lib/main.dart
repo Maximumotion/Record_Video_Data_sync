@@ -38,6 +38,7 @@ class _BenchPageState extends State<BenchPage> {
 
   Future<void> _open() async {
     final ok = await Permission.camera.request();
+    _mic = (await Permission.microphone.request()).isGranted;
     if (!ok.isGranted) {
       setState(() => _status = 'Camera permission denied');
       return;
@@ -61,7 +62,7 @@ class _BenchPageState extends State<BenchPage> {
       _count++;
       final path = '${dir!.path}/clip_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final pressedUs = DateTime.now().microsecondsSinceEpoch;
-      await r.start(path, rotationDegrees: 90);
+      await r.start(path, rotationDegrees: 90, withAudio: _mic);
       setState(() {
         _recording = true;
         _status = 'Recording $_count...';
@@ -84,15 +85,17 @@ class _BenchPageState extends State<BenchPage> {
         'height': res.height,
         'fps': res.fps,
         'record_pressed_epoch_us': _pressedUs,
+        'has_audio': res.hasAudio,
       };
       await File(res.path.replaceAll('.mp4', '.json')).writeAsString(jsonEncode(sidecar));
       final startMs = (res.firstFrameEpochUs - (_pressedUs ?? res.firstFrameEpochUs)) / 1000.0;
       setState(() => _status =
-          'Saved: ${res.frameCount} frames, first frame ${startMs.toStringAsFixed(1)} ms after Record (${res.timestampSource})');
+          'Saved: ${res.frameCount} frames, first frame ${startMs.toStringAsFixed(1)} ms after Record (${res.timestampSource}, ${res.hasAudio ? 'with sound' : 'no sound'})');
     }
   }
 
   int? _pressedUs;
+  bool _mic = false;
 
   @override
   void dispose() {

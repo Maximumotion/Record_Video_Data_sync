@@ -16,7 +16,8 @@ class RecordingResult {
         timestampSource = m['timestampSource'] as String,
         width = (m['width'] as num).toInt(),
         height = (m['height'] as num).toInt(),
-        fps = (m['fps'] as num).toInt();
+        fps = (m['fps'] as num).toInt(),
+        hasAudio = m['hasAudio'] == true;
 
   /// MP4 file.
   final String path;
@@ -34,6 +35,9 @@ class RecordingResult {
   final int width;
   final int height;
   final int fps;
+
+  /// Sound was recorded (asked for, microphone allowed and working).
+  final bool hasAudio;
 
   @override
   String toString() =>
@@ -68,8 +72,11 @@ class PreciseRecorder {
 
   /// [rotationDegrees]: how the phone is held -- 0 portrait, 90 landscape
   /// (top to the left), 180, 270 landscape (top to the right).
-  Future<void> start(String path, {int rotationDegrees = 90}) =>
-      _ch.invokeMethod('start', {'path': path, 'rotationDegrees': rotationDegrees});
+  /// [withAudio]: also record sound (ask for RECORD_AUDIO first). If the
+  /// microphone can't be used, the video is recorded without sound --
+  /// [RecordingResult.hasAudio] says which.
+  Future<void> start(String path, {int rotationDegrees = 90, bool withAudio = false}) =>
+      _ch.invokeMethod('start', {'path': path, 'rotationDegrees': rotationDegrees, 'withAudio': withAudio});
 
   /// Finishes the file. Null if no frame was recorded.
   Future<RecordingResult?> stop() async {

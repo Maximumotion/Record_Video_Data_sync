@@ -51,8 +51,9 @@ class RecordVideoDataSyncPlugin : FlutterPlugin, MethodCallHandler {
                 val path = call.argument<String>("path")
                 if (path == null) { result.error("bad_args", "path missing", null); return }
                 val rotation = call.argument<Int>("rotationDegrees") ?: 0
+                val withAudio = call.argument<Boolean>("withAudio") ?: false
                 var failed: String? = null
-                rec().start(path, rotation) { failed = it }
+                rec().start(path, rotation, withAudio) { failed = it }
                 if (failed != null) result.error("start_failed", failed, null) else result.success(null)
             }
             "stop" -> rec().stop { r ->
@@ -67,6 +68,7 @@ class RecordVideoDataSyncPlugin : FlutterPlugin, MethodCallHandler {
                         "width" to r.width,
                         "height" to r.height,
                         "fps" to r.fps,
+                        "hasAudio" to r.hasAudio,
                     ))
                 }
             }
