@@ -46,7 +46,7 @@ class RecordingResult {
 
 /// Opened camera: show [preview], then [start] / [stop].
 class PreciseRecorder {
-  PreciseRecorder._(this.textureId, this.width, this.height, this.sensorOrientation);
+  PreciseRecorder._(this.textureId, this.width, this.height, this.sensorOrientation, this.uprightBuffers);
 
   static const MethodChannel _ch = MethodChannel('record_video_data_sync');
 
@@ -54,6 +54,10 @@ class PreciseRecorder {
   final int width;
   final int height;
   final int sensorOrientation;
+
+  /// True on iPhone: the camera already turns the frames to match the screen,
+  /// so the preview needs no turning ([previewQuarterTurns] is 0).
+  final bool uprightBuffers;
 
   /// Opens the back camera at [width]x[height] (16:9) and [fps] frames per
   /// second. Ask for the CAMERA permission first.
@@ -64,11 +68,23 @@ class PreciseRecorder {
       (m['width'] as num).toInt(),
       (m['height'] as num).toInt(),
       (m['sensorOrientation'] as num).toInt(),
+      m['uprightBuffers'] == true,
     );
   }
 
   /// Camera preview (landscape buffer, [width]:[height]).
   Widget preview() => AspectRatio(aspectRatio: width / height, child: Texture(textureId: textureId));
+
+  /// The bare camera texture, to size yourself with [previewSizeFor] (and
+  /// turn with [previewQuarterTurns]).
+  Widget previewTexture() => Texture(textureId: textureId);
+
+  /// Size of the upright preview on a screen turned by [displayRotation]:
+  /// tall when the picture shows portrait.
+  Size previewSizeFor(int displayRotation) {
+    final tall = uprightBuffers ? displayRotation.isEven : previewQuarterTurns(displayRotation).isOdd;
+    return tall ? Size(height.toDouble(), width.toDouble()) : Size(width.toDouble(), height.toDouble());
+  }
 
   /// [rotationDegrees]: how the phone is held -- 0 portrait, 90 landscape
   /// (top to the left), 180, 270 landscape (top to the right).
@@ -92,7 +108,9 @@ class PreciseRecorder {
   Future<void> close() => _ch.invokeMethod('close');
 
   /// How the screen is turned right now: 0 portrait, 1 = 90 (landscape,
-  /// top to the left), 2 = 180, 3 = 270. Android only (0 elsewhere).
+  /// top to the left), 2 = 180, 3 = 270 (even = portrait on both platforms).
+  /// On iPhone this also turns the camera frames to match the screen while
+  /// not recording -- poll it (e.g. every 500 ms) while the camera is open.
   static Future<int> displayRotation() async {
     try {
       return (await _ch.invokeMethod<int>('displayRotation')) ?? 0;
@@ -104,7 +122,7 @@ class PreciseRecorder {
   /// Quarter turns that show the camera image upright on a screen turned
   /// by [displayRotation] (use with RotatedBox around [preview]).
   int previewQuarterTurns(int displayRotation) =>
-      previewQuarterTurnsFor(sensorOrientation, displayRotation);
+      uprightBuffers ? 0 : previewQuarterTurnsFor(sensorOrientation, displayRotation);
 }
 
 /// Quarter turns that show a camera with [sensorOrientation] upright on a

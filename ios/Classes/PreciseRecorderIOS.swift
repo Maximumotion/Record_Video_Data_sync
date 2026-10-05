@@ -4,6 +4,7 @@ import CoreVideo
 import Flutter
 import Foundation
 import QuartzCore
+import UIKit
 
 /// iOS side of record_video_data_sync: AVCaptureSession -> AVAssetWriter.
 ///
@@ -12,6 +13,11 @@ import QuartzCore
 /// session starts exactly at the first written video frame, so video time 0
 /// is that frame, and its time is converted to the wall clock -- the same
 /// contract as the Android side (`firstFrameEpochUs`).
+///
+/// Orientation: the capture connection turns the frames to match the screen
+/// (videoOrientation follows the interface orientation while not recording),
+/// so preview and file are upright as delivered -- unlike Android, the app
+/// never turns the texture ("uprightBuffers": true).
 final class PreciseRecorderIOS: NSObject, FlutterTexture,
     AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
 
@@ -89,6 +95,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
                         "width": self.width,
                         "height": self.height,
                         "sensorOrientation": 90,
+                        "uprightBuffers": true,
                     ]))
                 }
             } catch {
@@ -118,7 +125,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
         videoOut.setSampleBufferDelegate(self, queue: queue)
         if session.canAddOutput(videoOut) { session.addOutput(videoOut) }
         if let conn = videoOut.connection(with: .video), conn.isVideoOrientationSupported {
-            conn.videoOrientation = .landscapeRight // sensor-native landscape
+            conn.videoOrientation = .landscapeRight // until displayRotation() reports the screen
         }
 
         if withAudio, let mic = AVCaptureDevice.default(for: .audio),
@@ -132,16 +139,57 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
         }
     }
 
+    // MARK: Orientation
+
+    /// The screen's orientation as 0 portrait, 1 landscape (home side right),
+    /// 2 upside down, 3 landscape (home side left) -- even = portrait, like
+    /// Android's rotation. While not recording, the camera frames are turned
+    /// to match it, so the preview and the next recording are upright.
+    /// Call on the main thread (method channel calls are).
+    func displayRotation() -> Int {
+        var io: UIInterfaceOrientation = .landscapeRight
+        if #available(iOS 13.0, *) {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            if let ws = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
+                io = ws.interfaceOrientation
+            }
+        }
+        let video: AVCaptureVideoOrientation
+        let rotation: Int
+        switch io {
+        case .portrait: video = .portrait; rotation = 0
+        case .portraitUpsideDown: video = .portraitUpsideDown; rotation = 2
+        case .landscapeLeft: video = .landscapeLeft; rotation = 3
+        default: video = .landscapeRight; rotation = 1
+        }
+        queue.async {
+            // Never turn the frames mid-recording: the file keeps one size.
+            guard !self.recording, let conn = self.videoOut.connection(with: .video),
+                  conn.isVideoOrientationSupported, conn.videoOrientation != video else { return }
+            conn.videoOrientation = video
+        }
+        return rotation
+    }
+
     // MARK: Record
+    /// [rotationDegrees] is not needed on iOS: the frames already arrive
+    /// upright for the screen orientation at the moment Record is pressed.
     func start(path: String, rotationDegrees: Int, withAudio: Bool) throws {
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let w = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        // Frames are turned to the screen: portrait frames are tall.
+        var portrait = false
+        queue.sync {
+            if let o = self.videoOut.connection(with: .video)?.videoOrientation {
+                portrait = o == .portrait || o == .portraitUpsideDown
+            }
+        }
         let vSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
+            AVVideoWidthKey: portrait ? height : width,
+            AVVideoHeightKey: portrait ? width : height,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: width >= 1920 ? 16_000_000 : 8_000_000,
                 AVVideoExpectedSourceFrameRateKey: Int(fps),
@@ -150,8 +198,6 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
         ]
         let v = AVAssetWriterInput(mediaType: .video, outputSettings: vSettings)
         v.expectsMediaDataInRealTime = true
-        // Buffers arrive landscape-right; phone held the other way round -> 180.
-        if rotationDegrees == 270 { v.transform = CGAffineTransform(rotationAngle: .pi) }
         if w.canAdd(v) { w.add(v) }
         var a: AVAssetWriterInput? = nil
         if withAudio && audioInputAdded {

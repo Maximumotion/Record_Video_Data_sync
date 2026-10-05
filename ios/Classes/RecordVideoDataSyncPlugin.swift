@@ -55,6 +55,8 @@ public class RecordVideoDataSyncPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "zoomRange":
       result(rec().zoomRange())
+    case "displayRotation":
+      result(recorder?.displayRotation() ?? 0)
     case "close":
       recorder?.close()
       recorder = nil
