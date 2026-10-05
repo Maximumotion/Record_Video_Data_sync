@@ -11,5 +11,8 @@
   only if the microphone can't be used (`RecordingResult.hasAudio`).
   Clap test: sound lands where the hands stop, within one video frame.
 * iOS: AVCaptureSession + AVAssetWriter, video + sound on the capture
-  session clock; asks for camera/microphone itself. Compile-checked in CI,
-  not yet tested on a device.
+  session clock; asks for camera/microphone itself; frames follow the screen
+  orientation (`uprightBuffers`). Compile-checked in CI, not yet tested on a
+  device (this pre-release is for that test).
+* `displayRotation()`, `previewQuarterTurns()`, `previewSizeFor()`,
+  `previewTexture()` for apps whose screen rotates.
