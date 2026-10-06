@@ -1,3 +1,12 @@
+## 0.0.1
+
+* First release. Android (Camera2 + MediaCodec) and iOS (AVFoundation).
+* `RecordingResult.captureCenterEpochUs`: when the centre of the first frame was
+  really captured -- the same reference on both platforms in any light.
+  LED-verified (flashes timed by an external device, microsecond clock):
+  Galaxy S24 and iPhone, indoors and in sunshine, within about 2 ms; the two
+  platforms agree within about 2 ms.
+
 ## 0.0.1-dev.3
 
 * `RecordingResult.captureCenterEpochUs`: when the centre of the first frame
