@@ -1,3 +1,10 @@
+## 0.0.1-dev.3
+
+* `RecordingResult.captureCenterEpochUs`: when the centre of the first frame
+  was really captured (middle of the exposure, middle row) -- the same
+  reference on Android (stamp + exposure/2 + readout/2) and iOS (stamp -
+  exposure/2 + readout/2). LED-verified on a Galaxy S24: within 2 ms.
+
 ## 0.0.1-dev.2
 
 * Camera timing of the first frame in `RecordingResult`: `exposureUs`,
