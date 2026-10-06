@@ -1,3 +1,10 @@
+## 0.0.1-dev.2
+
+* Camera timing of the first frame in `RecordingResult`: `exposureUs`,
+  `rollingShutterSkewUs` (Android), `sensorMinusFrameUs` (Android check), to
+  place data at the middle of the exposure on both platforms (iOS exposure
+  from the frame's EXIF attachment).
+
 ## 0.0.1-dev.1
 
 * Android: Camera2 + MediaCodec recorder (H.264, 30 fps, 720p/1080p, zoom,

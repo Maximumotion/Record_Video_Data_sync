@@ -1,6 +1,6 @@
 name: record_video_data_sync
 description: "Video recorder for Flutter that records the exact capture time of the first frame, so recorded video can be precisely synchronized with sensor data."
-version: 0.0.1-dev.1
+version: 0.0.1-dev.2
 homepage:
 repository: https://github.com/Maximumotion/Record_Video_Data_sync
 
