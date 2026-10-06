@@ -69,6 +69,14 @@ class PreciseRecorder(
         val rollingShutterSkewUs: Long,
         /** First frame: its SENSOR_TIMESTAMP minus its file time (check; 0 = same). */
         val sensorMinusFrameUs: Long,
+        /**
+         * When the CENTRE of the first frame was really captured: the middle
+         * of its light collection at the middle row (wall clock, us). Android
+         * stamps a frame at the start of the top row's exposure, so this is
+         * stamp + exposure/2 + readout/2 -- the same reference the iOS side
+         * reports, so both platforms line data up identically.
+         */
+        val captureCenterEpochUs: Long,
     )
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -407,6 +415,9 @@ class PreciseRecorder(
                 exposureUs = if (ftOk && ft!!.exposureNs > 0) ft.exposureNs / 1000L else -1L,
                 rollingShutterSkewUs = if (ftOk && ft!!.skewNs > 0) ft.skewNs / 1000L else -1L,
                 sensorMinusFrameUs = if (ftOk) ft!!.startUs - firstPtsUs else Long.MIN_VALUE,
+                captureCenterEpochUs = toEpochUs(firstPtsUs, useRealtime) +
+                    (if (ftOk && ft!!.exposureNs > 0) ft.exposureNs / 2000L else 0L) +
+                    (if (ftOk && ft!!.skewNs > 0) ft.skewNs / 2000L else 0L),
             ))
         }.start()
     }

@@ -47,6 +47,10 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
     private var frameCount = 0
     private var audioCount = 0
     private var firstExposureUs: Int64 = -1
+    /// Top-to-bottom readout of the iPhone camera at 720p/30 (rolling shutter).
+    /// iOS doesn't report it; measured on an iPhone with LED flashes at the
+    /// top / middle / bottom of the picture (2026-10-05): about 9 ms.
+    private static let readoutUs: Int64 = 9_000
     private var outputURL: URL?
     private var width = 1280
     private var height = 720
@@ -253,6 +257,11 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
                     "hasAudio": audio > 0,
                     "exposureUs": exposure,
                     "rollingShutterSkewUs": -1,
+                    // iOS stamps a frame at the END of the top row's light
+                    // collection (measured), so the centre of the frame was
+                    // captured exposure/2 earlier, plus half the readout.
+                    "captureCenterEpochUs": self.epochUs(first)
+                        - (exposure > 0 ? exposure / 2 : 0) + Self.readoutUs / 2,
                 ]
                 DispatchQueue.main.async { completion(result) }
             }

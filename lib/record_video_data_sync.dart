@@ -20,7 +20,9 @@ class RecordingResult {
         hasAudio = m['hasAudio'] == true,
         exposureUs = (m['exposureUs'] as num?)?.toInt() ?? -1,
         rollingShutterSkewUs = (m['rollingShutterSkewUs'] as num?)?.toInt() ?? -1,
-        sensorMinusFrameUs = (m['sensorMinusFrameUs'] as num?)?.toInt();
+        sensorMinusFrameUs = (m['sensorMinusFrameUs'] as num?)?.toInt(),
+        captureCenterEpochUs = (m['captureCenterEpochUs'] as num?)?.toInt() ??
+            (m['firstFrameEpochUs'] as num).toInt();
 
   /// MP4 file.
   final String path;
@@ -53,6 +55,13 @@ class RecordingResult {
   /// Android check: the first frame's sensor timestamp minus its file time
   /// (0 = the file uses the sensor's exposure-start stamp). Null elsewhere.
   final int? sensorMinusFrameUs;
+
+  /// When the CENTRE of the first frame was really captured (middle of its
+  /// light collection at the middle row), wall clock in microseconds. Use
+  /// this to line sensor data up with the video: it means the same moment on
+  /// Android and iPhone, whatever the light. [firstFrameEpochUs] is each
+  /// platform's own stamp (Android: exposure start; iPhone: exposure end).
+  final int captureCenterEpochUs;
 
   @override
   String toString() =>

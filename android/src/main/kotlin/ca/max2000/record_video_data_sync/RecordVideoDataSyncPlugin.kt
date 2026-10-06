@@ -71,6 +71,7 @@ class RecordVideoDataSyncPlugin : FlutterPlugin, MethodCallHandler {
                         "hasAudio" to r.hasAudio,
                         "exposureUs" to r.exposureUs,
                         "rollingShutterSkewUs" to r.rollingShutterSkewUs,
+                        "captureCenterEpochUs" to r.captureCenterEpochUs,
                         "sensorMinusFrameUs" to if (r.sensorMinusFrameUs == Long.MIN_VALUE) null else r.sensorMinusFrameUs,
                     ))
                 }
