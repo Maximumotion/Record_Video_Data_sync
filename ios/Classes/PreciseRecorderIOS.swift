@@ -3,6 +3,7 @@ import CoreMedia
 import CoreVideo
 import Flutter
 import Foundation
+import ImageIO
 import QuartzCore
 import UIKit
 
@@ -45,6 +46,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
     private var lastPts = CMTime.invalid
     private var frameCount = 0
     private var audioCount = 0
+    private var firstExposureUs: Int64 = -1
     private var outputURL: URL?
     private var width = 1280
     private var height = 720
@@ -221,6 +223,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
             self.lastPts = .invalid
             self.frameCount = 0
             self.audioCount = 0
+            self.firstExposureUs = -1
             w.startWriting()
             self.recording = true
         }
@@ -234,6 +237,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
             self.audioIn?.markAsFinished()
             let first = self.firstPts, last = self.lastPts
             let frames = self.frameCount, audio = self.audioCount
+            let exposure = self.firstExposureUs
             let url = self.outputURL
             w.finishWriting {
                 guard first.isValid, let url = url else { DispatchQueue.main.async { completion(nil) }; return }
@@ -247,6 +251,8 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
                     "height": self.height,
                     "fps": Int(self.fps),
                     "hasAudio": audio > 0,
+                    "exposureUs": exposure,
+                    "rollingShutterSkewUs": -1,
                 ]
                 DispatchQueue.main.async { completion(result) }
             }
@@ -292,6 +298,7 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
                 w.startSession(atSourceTime: pts)
                 sessionStarted = true
                 firstPts = pts
+                firstExposureUs = Self.exposureUs(sampleBuffer)
             }
             if v.isReadyForMoreMediaData && v.append(sampleBuffer) {
                 lastPts = pts
@@ -303,6 +310,13 @@ final class PreciseRecorderIOS: NSObject, FlutterTexture,
             if CMTimeCompare(pts, firstPts) < 0 { return } // before the first frame
             if a.isReadyForMoreMediaData && a.append(sampleBuffer) { audioCount += 1 }
         }
+    }
+
+    /// The frame's exposure time from its EXIF attachment (-1 if missing).
+    private static func exposureUs(_ sb: CMSampleBuffer) -> Int64 {
+        guard let exif = CMGetAttachment(sb, key: kCGImagePropertyExifDictionary, attachmentModeOut: nil) as? [String: Any],
+              let t = exif[kCGImagePropertyExifExposureTime as String] as? Double, t > 0 else { return -1 }
+        return Int64((t * 1_000_000).rounded())
     }
 
     func setZoom(_ ratio: Double) {

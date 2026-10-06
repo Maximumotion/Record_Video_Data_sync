@@ -17,7 +17,10 @@ class RecordingResult {
         width = (m['width'] as num).toInt(),
         height = (m['height'] as num).toInt(),
         fps = (m['fps'] as num).toInt(),
-        hasAudio = m['hasAudio'] == true;
+        hasAudio = m['hasAudio'] == true,
+        exposureUs = (m['exposureUs'] as num?)?.toInt() ?? -1,
+        rollingShutterSkewUs = (m['rollingShutterSkewUs'] as num?)?.toInt() ?? -1,
+        sensorMinusFrameUs = (m['sensorMinusFrameUs'] as num?)?.toInt();
 
   /// MP4 file.
   final String path;
@@ -38,6 +41,18 @@ class RecordingResult {
 
   /// Sound was recorded (asked for, microphone allowed and working).
   final bool hasAudio;
+
+  /// First frame: how long the camera collected light, in microseconds
+  /// (-1 = the phone didn't say). Bright scenes are short, dim ones long.
+  final int exposureUs;
+
+  /// First frame: top-to-bottom readout time (rolling shutter), in
+  /// microseconds (-1 = unknown; iPhone doesn't report it).
+  final int rollingShutterSkewUs;
+
+  /// Android check: the first frame's sensor timestamp minus its file time
+  /// (0 = the file uses the sensor's exposure-start stamp). Null elsewhere.
+  final int? sensorMinusFrameUs;
 
   @override
   String toString() =>

@@ -8,6 +8,8 @@ import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.MediaCodec
@@ -61,6 +63,12 @@ class PreciseRecorder(
         val height: Int,
         val fps: Int,
         val hasAudio: Boolean,
+        /** First frame: how long the sensor collected light (-1 unknown). */
+        val exposureUs: Long,
+        /** First frame: top-to-bottom readout time (rolling shutter; -1 unknown). */
+        val rollingShutterSkewUs: Long,
+        /** First frame: its SENSOR_TIMESTAMP minus its file time (check; 0 = same). */
+        val sensorMinusFrameUs: Long,
     )
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -93,6 +101,27 @@ class PreciseRecorder(
     private var frameCount = 0
     private var recording = false
     private var drainThread: Thread? = null
+
+    // Per-frame camera timing while recording (2026-10-05): exposure start
+    // (SENSOR_TIMESTAMP, converted to the file's clock), exposure length and
+    // rolling-shutter readout, so the first frame's real capture moment can
+    // be worked out. Only the first few seconds are kept.
+    private class FrameTiming(val startUs: Long, val exposureNs: Long, val skewNs: Long)
+    private val frameTimings = ArrayList<FrameTiming>()
+    private val timingCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
+            if (!recording) return
+            val ts = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
+            // The file's clock is MONOTONIC (API 33+) or the sensor's own.
+            val monoNs = if (timestampRealtime && timestampMonotonic)
+                ts - (SystemClock.elapsedRealtimeNanos() - System.nanoTime()) else ts
+            val e = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: -1L
+            val k = result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW) ?: -1L
+            synchronized(frameTimings) {
+                if (frameTimings.size < 150) frameTimings.add(FrameTiming(monoNs / 1000L, e, k))
+            }
+        }
+    }
 
     // Audio (P1b): AAC track on the same MONOTONIC clock as the video.
     private var audio: AudioTrackRecorder? = null
@@ -217,7 +246,7 @@ class PreciseRecorder(
 
     fun setZoom(ratio: Double) {
         zoomRatio = ratio.toFloat()
-        try { session?.setRepeatingRequest(buildRequest(recording), null, handler) } catch (_: Exception) {}
+        try { session?.setRepeatingRequest(buildRequest(recording), if (recording) timingCallback else null, handler) } catch (_: Exception) {}
     }
 
     fun zoomRange(): List<Double> {
@@ -261,6 +290,7 @@ class PreciseRecorder(
             firstPtsUs = -1L
             lastPtsUs = -1L
             frameCount = 0
+            synchronized(frameTimings) { frameTimings.clear() }
             audioWanted = false
             if (withAudio) {
                 val a = AudioTrackRecorder(
@@ -273,7 +303,7 @@ class PreciseRecorder(
             recording = true
             startWallUs = System.currentTimeMillis() * 1000L
             drainThread = Thread { drainLoop() }.also { it.start() }
-            session?.setRepeatingRequest(buildRequest(recordTarget = true), null, handler)
+            session?.setRepeatingRequest(buildRequest(recordTarget = true), timingCallback, handler)
         } catch (e: Exception) {
             recording = false
             onError(e.toString())
@@ -361,6 +391,9 @@ class PreciseRecorder(
             }
             if (firstPtsUs < 0) { onDone(null); return@Thread }
             val useRealtime = pickRealtime(firstPtsUs)
+            // The capture whose exposure start is closest to the first frame.
+            val ft = synchronized(frameTimings) { frameTimings.minByOrNull { abs(it.startUs - firstPtsUs) } }
+            val ftOk = ft != null && abs(ft.startUs - firstPtsUs) < 20_000
             onDone(Result(
                 path = outputPath,
                 firstFrameEpochUs = toEpochUs(firstPtsUs, useRealtime),
@@ -371,6 +404,9 @@ class PreciseRecorder(
                 height = videoSize.height,
                 fps = fps,
                 hasAudio = audioWritten > 0,
+                exposureUs = if (ftOk && ft!!.exposureNs > 0) ft.exposureNs / 1000L else -1L,
+                rollingShutterSkewUs = if (ftOk && ft!!.skewNs > 0) ft.skewNs / 1000L else -1L,
+                sensorMinusFrameUs = if (ftOk) ft!!.startUs - firstPtsUs else Long.MIN_VALUE,
             ))
         }.start()
     }
